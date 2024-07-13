@@ -34,6 +34,7 @@ const usersApp = admin.initializeApp({
 
 const usersdb = admin.firestore(usersApp)
 
+
 setInterval(async () => {
     const devicesRef = usersdb.collection('Devices')
     const devices = await devicesRef.get()
@@ -42,11 +43,11 @@ setInterval(async () => {
 
     devices.forEach(device => {
         const deviceData = device.data()
-        arr.push(deviceData.locationID !== "" ? deviceData.locationID : device.id)
+        arr.push(deviceData.locationID !== "" ? { locationId: deviceData.locationID, deviceId: device.id } : { locationId: device.id, deviceId: device.id })
     })
 
-    arr.forEach(async collectionName => {
-        const valuesRef = db.collection(collectionName)
+    arr.forEach(async ({ locationId, deviceId }) => {
+        const valuesRef = db.collection(locationId)
         const values = await valuesRef.orderBy('datetime', 'desc').limit(1).get()
 
         if (!values.empty) {
@@ -55,17 +56,25 @@ setInterval(async () => {
             const docTimestamp = new Date(docData.datetime);
             const currTime = new Date()
 
+            const statusRef = usersdb.collection('Devices').doc(deviceId)
+            const statusDoc = await statusRef.get()
+            const status = statusDoc.data().adminStatus
+
             if (currTime - docTimestamp > 900_000) {
-                const phoneNumbers = ['9779517458', '9495050608', '9582753345']
-                phoneNumbers.forEach(async (num) => {
-                    const message = await client.messages.create({
-                        body: `Error from Parimitra. Data from ${collectionName} was last received at ${docTimestamp}. More than ${(currTime - docTimestamp) / 60_000}mins have passed`,
-                        from: "whatsapp:+14155238886",
-                        to: `whatsapp:+91${num}`,
-                    });
-                    console.log(message)
-                })
+                const phoneNumbers = ['9779517458']
+                if (status) {
+                    phoneNumbers.forEach(async (num) => {
+                        const message = await client.messages.create({
+                            body: `Error from Parimitra. Data from ${collectionName} was last received at ${docTimestamp}. More than ${(currTime - docTimestamp) / 60_000}mins have passed`,
+                            from: "whatsapp:+14155238886",
+                            to: `whatsapp:+91${num}`,
+                        });
+                    })
+                    await statusRef.update({ adminStatus: false })
+                }
+            } else {
+                if (!status) await statusRef.update({ adminStatus: true })
             }
         }
     })
-}, 960_000)
+}, 1020_000)
