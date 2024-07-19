@@ -116,15 +116,17 @@ setInterval(async () => {
 
     devices.forEach(device => {
         const deviceData = device.data()
-        arr.push(deviceData.locationID !== "" ? { locationId: deviceData.locationID, deviceId: device.id } : { locationId: device.id, deviceId: device.id })
+        deviceData.locationID !== "" && arr.push({ locationId: deviceData.locationID, deviceId: device.id })
     })
 
-    arr.forEach(async ({ locationId, deviceId }) => {
+    let totalEntries = 0
+    let totalExits = 0
+    const promises =  arr.map(async ({ locationId, deviceId }, ind) => {
         const valuesRef = db.collection(locationId)
         const values = await valuesRef.orderBy('datetime', 'desc').limit(20).get()
-
         const filtered = []
-        if (values.empty) return;
+        if (values.empty) return `${locationId} || N/A || N/A`;
+
         values.forEach(value => {
             const data = value.data()
             if (new Date() - new Date(data.datetime) <= 3600_000) filtered.push(data)
@@ -132,15 +134,28 @@ setInterval(async () => {
 
         const entries = filtered.reduce((acc, curr) => acc + curr['total entry count'], 0)
         const exits = filtered.reduce((acc, curr) => acc + curr['total exit count'], 0)
-
-        console.log(locationId, entries, exits)
-        const message = await client.messages.create({
-            from: "MG1d61c968e1c62832967785c085b0e807",
-            contentSid: "HX4fa2a74472e1d1734f47a05a9dd91229",
-            contentVariables: JSON.stringify({ 1: locationId, 2: entries.toString(), 3: exits.toString() }),
-            to: `whatsapp:+91 9582753345 `,
-        });
-        console.log(message)
+        totalEntries+= entries
+        totalExits+=exits
+        return (`${locationId} || ${entries} || ${exits}`)
     })
+    const msg = {}
+
+    async function resolver(promises) {
+        return await Promise.all(promises)
+    }
+
+    const data = await resolver(promises)
+
+    data.forEach((e,ind) => e ? (msg[ind+1] = e) : (msg[ind+1] = ""))
+    msg[9] = `Total || ${totalEntries} || ${totalExits}`
+
+    const message = await client.messages.create({
+        from: "MG1d61c968e1c62832967785c085b0e807",
+        contentSid: "HX0a7981fdfbbef6595c47603016d6fe98",
+        contentVariables: JSON.stringify(msg),
+        to: `whatsapp:+919779517458 `,
+    });
+
+    console.log(message)
 
 }, 3600_000)
